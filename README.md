@@ -1,2 +1,2 @@
 # DIReCT
-Public testing version of DIReCT (Deep Image Reconstruction with Closure invariants & Transformers), a deep learning approach to sparse uv coverage VLBI deep image reconstruction.
+Public testing version of DIReCT (Deep Image Reconstruction with Closure Terms), a deep learning approach to sparse uv coverage VLBI deep image reconstruction.
