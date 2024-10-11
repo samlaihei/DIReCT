@@ -2,34 +2,33 @@ from torch import nn
 import torch
 import numpy as np
 import torch.nn.functional as F
-from VQVAE.encoder import Encoder
-from VQVAE.decoder import Decoder
-from vit_pytorch.vit_for_small_dataset import ViT
-from vit_pytorch.recorder import Recorder
+from models.encoder import Encoder
+from models.decoder import Decoder
+from models.transformer import ViT
+from models.recorder import Recorder
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-class Vae_FD(nn.Module):
-    def __init__(self, latent_size:int=4, k_classes:int=5, imgdim1:int=64, imgdim2:int=64):
-        super(Vae_FD, self).__init__()
+class DIReCT(nn.Module):
+    def __init__(self, data_dim:int=992, latent_size:int=4, k_classes:int=5, imgdim1:int=64, imgdim2:int=64):
+        super(DIReCT, self).__init__()
 
         self.latent_size = latent_size
         self.k_classes = k_classes
         self.imgdim1, self.imgdim2 = imgdim1, imgdim2
         self.imgdim = int(imgdim1*imgdim2)
-        self.ci_dim = 992
+        self.ci_dim = data_dim
 
-        # Encoder VQVAE # input img, output n latent features
+        # Encoder # input img, output n latent features
         self.encoder = Encoder(1, self.latent_size, n_res_layers=2, res_h_dim=8)
 
-        # Decoder VQVAE # input n, output img
+        # Decoder # input n, output img
         self.decoder = Decoder(self.latent_size, self.latent_size, n_res_layers=2, res_h_dim=8)
 
         # take ci and get latent features
         self.ci_xtrans = ViT(
             image_size=32, 
+            # channels=1,
             patch_size=1, 
             num_classes=1024, 
             dim=64,
@@ -39,7 +38,6 @@ class Vae_FD(nn.Module):
             dropout = 0.1,
             emb_dropout = 0.1
         )
-
 
         # self.attn = SelfAttentionLayer()
 
@@ -56,6 +54,7 @@ class Vae_FD(nn.Module):
         )
 
     def ci_latent(self, ci):
+        # ci = ci.reshape(-1, 1, 1, self.ci_dim)
         ci = ci.reshape(-1, self.ci_dim)
         ci = ci.repeat(1, 3)
         ci = ci.reshape(-1, 3, self.ci_dim)
@@ -66,6 +65,7 @@ class Vae_FD(nn.Module):
         return features_ci
 
     def ci_attn(self, ci):
+        # ci = ci.reshape(-1, 1, 1, self.ci_dim)
         ci = ci.reshape(-1, self.ci_dim)
         ci = ci.repeat(1, 3)
         ci = ci.reshape(-1, 3, self.ci_dim)
@@ -76,8 +76,12 @@ class Vae_FD(nn.Module):
         features_ci = features_ci.reshape(-1, self.latent_size, self.imgdim1//4, self.imgdim2//4)
         return features_ci, attns
     
-    def forward(self, imgs, ci): 
+    def forward(self, imgs, ci, mask=None): 
         features_vae, features_q, recon_img = self.encoder_to_img(imgs)
+
+        if mask is not None:
+            ci = ci.masked_fill(mask==0, -1e9)
+
         features_ci, pred_img = self.predict(ci)
 
         features_cls = features_q.reshape(-1, features_q.shape[1]*features_q.shape[2]*features_q.shape[3])
@@ -108,54 +112,28 @@ class Vae_FD(nn.Module):
         recon_img = self.decoder(features_q)
         return features_vae, features_q, recon_img
 
-class SelfAttentionLayer(nn.Module):
-    def __init__(self, feature_size):
-        super(SelfAttentionLayer, self).__init__()
-        self.feature_size = feature_size
-
-        # Linear transformations for Q, K, V from the same source
-        self.key = nn.Linear(feature_size, feature_size)
-        self.query = nn.Linear(feature_size, feature_size)
-        self.value = nn.Linear(feature_size, feature_size)
-
-    def forward(self, x, mask=None):
-        # Apply linear transformations
-        keys = self.key(x)
-        queries = self.query(x)
-        values = self.value(x)
-
-        # Scaled dot-product attention
-        scores = torch.matmul(queries, keys.transpose(-2, -1)) / torch.sqrt(torch.tensor(self.feature_size, dtype=torch.float32))
-
-        # Apply mask (if provided)
-        if mask is not None:
-            scores = scores.masked_fill(mask == 0, -1e9)
-
-        # Apply softmax
-        attention_weights = F.softmax(scores, dim=-1)
-
-        # Multiply weights with values
-        output = torch.matmul(attention_weights, values)
-
-        return output, attention_weights
 
 
 if __name__ == "__main__":
     N = 32
     imgdim = 64
     latent_size = 4
+    data_size = 992
 
     # random data
     x = np.random.random_sample((N, 1, imgdim, imgdim))
     x = torch.tensor(x).float()
 
-    ci = np.random.random_sample((N, 120))
+    ci = np.random.random_sample((N, data_size))
     ci = torch.tensor(ci).float()
+    mask = np.ones((N, data_size))
+    mask = torch.tensor(mask).float()
 
     # test vae
-    vae = Vae_FD(latent_size=latent_size, k_classes=5)
-    # features_vae, features_ci, recon_img, pred_class = vae(x, ci)
-    features_vae, features_q, features_ci, recon_img, pred_img, pred_class = vae(x, ci)
+    model = DIReCT(data_dim=data_size, latent_size=latent_size, k_classes=5)
+
+    
+    features_vae, features_q, features_ci, recon_img, pred_img, pred_class = model(x, ci, mask=mask)
 
     print('Features vae shape:', features_vae.shape)
     print('Features q shape:', features_q.shape)

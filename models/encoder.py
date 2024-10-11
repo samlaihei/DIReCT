@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from VQVAE.residual import ResidualStack
+from models.residual import ResidualStack
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -37,8 +37,8 @@ class Encoder(nn.Module):
             nn.Conv2d(h_dim, h_dim, kernel_size=kernel-1,
                       stride=stride-1, padding=1),
             ResidualStack(
-                h_dim, h_dim, res_h_dim, n_res_layers)
-
+                h_dim, h_dim, res_h_dim, n_res_layers),
+            nn.ReLU(),
         )
 
     def forward(self, x):
