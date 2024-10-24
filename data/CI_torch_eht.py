@@ -158,7 +158,8 @@ class Closure_Invariants():
 
     def FTCI(self, imgs, add_th_noise=False, th_noise_factor=1,
              return_uv=False, return_vis=False, return_combined=False, return_list=False,
-             fov=None, fovx=None, fovy=None, intensity=0, normpower=2):
+             fov=None, fovx=None, fovy=None, intensity=0, normpower=2,
+             splitRealImag=False):
         self.bs = imgs.shape[0]
         if intensity > 0:
             imgs = imgs * intensity
@@ -167,7 +168,10 @@ class Closure_Invariants():
             imgs = torch.tensor(imgs).to(device)
             
         ci = np.array([np.array([]) for i in range(len(imgs))])
+        ci_real = np.array([np.array([]) for i in range(len(imgs))])
+        ci_imag = np.array([np.array([]) for i in range(len(imgs))])
         out_uv = []
+        out_uv_split = []
 
         if fov is not None:
             fovx = fov
@@ -206,6 +210,7 @@ class Closure_Invariants():
             if return_uv:
                 temp_ci, temp_uv = self.ClosureInvariants(torch.tensor(temp_vis), uv=uv, pairs=pairs[0], normpower=normpower)
                 out_uv.append(temp_uv)
+                out_uv_split.append(temp_uv.reshape(1, 3, 3, 2, -1)[:, :, :, 0])
             else:
                 temp_ci, _ = self.ClosureInvariants(torch.tensor(temp_vis), uv=None, pairs=pairs[0], normpower=normpower)
             
@@ -214,6 +219,13 @@ class Closure_Invariants():
                 temp_uv = temp_uv.reshape(1, 3, 3, -1, temp_ci.shape[-1])
                 temp_uv = temp_uv[0]
                 out_list.append([time, element_pairs, temp_uv, temp_ci.cpu().detach().numpy()])
+
+            if splitRealImag:
+                # split temp_ci in halves, first half is real, second is imag
+                real_imag_ci = temp_ci.reshape(imgs.shape[0], 2, -1).cpu().detach().numpy()
+                ci_real = np.concatenate((ci_real, real_imag_ci[:, 0]), axis=1)
+                ci_imag = np.concatenate((ci_imag, real_imag_ci[:, 1]), axis=1)
+
 
             temp_ci = temp_ci.reshape(imgs.shape[0], -1).cpu().detach().numpy()
             ci = np.concatenate((ci, temp_ci), axis=1)
@@ -231,6 +243,11 @@ class Closure_Invariants():
             out_uv = np.concatenate(out_uv, axis=-1)
             return ci, vis, out_uv
         
+        if return_uv and splitRealImag:
+            out_uv = np.concatenate(out_uv, axis=-1)
+            out_uv_split = np.concatenate(out_uv_split, axis=-1)
+            return ci, out_uv, ci_real, ci_imag, out_uv_split
+        
         if return_uv:
             out_uv = np.concatenate(out_uv, axis=-1)
             return ci, out_uv
@@ -238,6 +255,9 @@ class Closure_Invariants():
         if return_vis:
             return ci, vis
         
+        if splitRealImag:
+            return ci, ci_real, ci_imag
+
         return ci
     
 
@@ -273,7 +293,7 @@ class Closure_Invariants():
         """
         element_pairs = pairs
         element_ids = pd.unique(np.array(element_pairs).ravel())
-        triads_indep = GU.generate_triangles(element_ids, baseid=element_ids[0])
+        triads_indep = GU.generate_independent_triads(element_ids, baseid=element_ids[0])
         corrs_lol = SI.corrs_list_on_loops(vis.detach().cpu().numpy(), element_pairs, triads_indep, bl_axis=-1)
         advariants = SI.advariants_multiple_loops(corrs_lol)
         ci = SI.invariants_from_advariants_method1(advariants, normaxis=-1, normwts=None, normpower=normpower)
