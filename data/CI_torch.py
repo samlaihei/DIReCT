@@ -93,7 +93,6 @@ class Closure_Invariants():
 
                     th_sigma.append(sig_iv)
                     
-
             self.th_sigma = th_sigma
             self.site_pairs = site_pairs
             self.uvlist = uvlist
@@ -104,34 +103,35 @@ class Closure_Invariants():
             self.antenna = 7
             self.atriads, self.btriads = self.Triads(self.antenna)
 
-    def FTCI(self, imgs, add_th_noise=False, return_uv=False, method=1, th_noise_factor=1):
-        imgs = torch.tensor(imgs).to(device)
+    def FTCI(self, imgs, add_th_noise=False, th_noise_factor=1, return_uv=False, method=1, return_vis=False):
+        if isinstance(imgs, np.ndarray):
+            imgs = torch.tensor(imgs).to(device)
         if self.ehtim:
-            ci = np.array([np.array([]) for i in range(len(imgs))])
+            ci = torch.empty((len(imgs), 0), device=device)
+            vis_all = torch.empty((len(imgs), 0), device=device)
             out_uv = []
             metadata = []
             for uv, num_antenna, sig_iv, pairs in zip(self.uvlist, self.antenna_list, self.th_sigma, self.site_pairs):
                 vis = self.Visibilities(imgs, torch.tensor(uv, dtype=torch.float32).to(device), self.fovx, self.fovy)
                 if add_th_noise:
-                    vis = vis + torch.tensor(obsh.cerror(sig_iv*th_noise_factor)).to(device)
+                    vis = vis + torch.tensor(obsh.cerror(sig_iv*th_noise_factor), dtype=torch.float32).to(device)
                 temp_ci, temp_uv = self.ClosureInvariants(vis, uv, num_antenna, method, pairs=pairs)
-                temp_ci = temp_ci.reshape(imgs.shape[0], -1).cpu().detach().numpy()
-                ci = np.concatenate((ci, temp_ci), axis=1)
+                temp_ci = temp_ci.reshape(imgs.shape[0], -1)
+                ci = torch.cat((ci, temp_ci), dim=1)
+                
+                vis_all = torch.cat((vis.reshape(len(imgs), -1), vis_all), dim=1)
                 out_uv.append(temp_uv)
                 metadata.append((num_antenna, len(temp_ci[0])))
-            ci = torch.tensor(ci)
             if return_uv:
-                out_uv = np.concatenate(out_uv, axis=-1)
-                metadata = np.array(metadata)
+                out_uv = torch.cat(out_uv, dim=-1)
+                metadata = torch.tensor(metadata)
                 return ci, out_uv, metadata
 
         else:
             vis = self.Visibilities(imgs)
             ci = self.ClosureInvariants(vis)
-        
-        # reverse order of ci
-        # ci = torch.flip(ci, [1])
 
+        
         return ci
     
 
@@ -243,7 +243,7 @@ class Closure_Invariants():
         l, m = torch.meshgrid(lvect, mvect)
         lm = torch.cat([l.reshape(1,-1), m.reshape(1,-1)], dim=0).to(device)
         imgvect = data.reshape((data.shape[0],-1)).to(device)
-        x = -2*np.pi*torch.matmul(uv,lm)[None, ...].to(device)
+        x = -2*torch.pi*torch.matmul(uv,lm)[None, ...].to(device)
         visr = torch.sum(imgvect[:, None, :] * torch.cos(x).to(device), axis=-1)
         visi = torch.sum(imgvect[:, None, :] * torch.sin(x).to(device), axis=-1)
         if data.ndim == 2:

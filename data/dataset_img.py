@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
-import data.CI_torch as CI
+import data.CI_torch_v2 as CI
 
 # Ignore warnings
 import warnings
@@ -9,11 +9,10 @@ warnings.filterwarnings("ignore")
 
 class ImgDataset(Dataset):
     def __init__(self, filelist, transform=None, transform_list=None,
-                 ehtim=False, ehtarray='./data/EHT2017.txt', subarray=None,
+                ehtarray='./data/EHT2017.txt', subarray=None,
                  date='2017-04-05', ra=187.7059167, dec=12.3911222, bw_hz=[230e9],
                  tint_sec=10, tadv_sec=48*60, tstart_hr=4.75, tstop_hr=6.5, psize=7.757018897750619e-12,
-                 noise=False, sgrscat=False, ampcal=True, phasecal=True,
-                 reorder=True):
+                 uvfits_files=None):
         self.filelist = filelist
         self.transform = transform
         if transform_list is None:
@@ -22,12 +21,11 @@ class ImgDataset(Dataset):
             self.transform_list = transform_list
         self.imgs = [np.load(f) for f in self.filelist]
         print([len(i) for i in self.imgs])
-        self.closure = CI.Closure_Invariants(filename='./data/ehtuv.npz',
-                                             ehtim=ehtim, ehtarray=ehtarray, subarray=subarray,
-                                             date=date, ra=ra, dec=dec, bw_hz=bw_hz,
+        self.closure = CI.Closure_Invariants(ehtarray=ehtarray, subarray=subarray,
+                                             date=date, ra=ra, dec=dec, bw_hz=bw_hz, psize=psize,
                                              tint_sec=tint_sec, tadv_sec=tadv_sec, tstart_hr=tstart_hr, tstop_hr=tstop_hr,
-                                             psize=psize, noise=noise, sgrscat=sgrscat, ampcal=ampcal, phasecal=phasecal,
-                                             reorder=reorder)
+                                             uvfits_files=uvfits_files)
+        
         
         # self.imgs = np.concatenate(self.imgs)
 
@@ -47,7 +45,7 @@ class ImgDataset(Dataset):
             # replace NaNs
             self.imgs[i] = np.nan_to_num(self.imgs[i])
             self.imgs[i] = (self.imgs[i] - np.nanmin(self.imgs[i])) / (np.nanmax(self.imgs[i]) - np.nanmin(self.imgs[i]))
-
+            # self.imgs[i] = self.imgs[i]/np.nansum(self.imgs[i]) # normalise to sum to 1
 
 
     def __len__(self):
