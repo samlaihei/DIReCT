@@ -71,7 +71,8 @@ class DIReCT(nn.Module):
         features_vae, features_q, recon_img = self.encoder_to_img(imgs)
 
         if mask is not None:
-            ci = ci.masked_fill(mask==0, -1e9)
+            # ci = ci.masked_fill(mask==0, -1e9)
+            ci = ci.masked_fill(mask==0, 0)
 
         features_ci, pred_img = self.predict(ci)
 

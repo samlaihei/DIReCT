@@ -34,6 +34,7 @@ class Decoder(nn.Module):
             nn.ReLU(),
             nn.ConvTranspose2d(h_dim//2, 1, kernel_size=kernel,
                                stride=stride, padding=1),
+            nn.ReLU(),
         )
 
     def forward(self, x):
